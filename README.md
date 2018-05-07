@@ -13,7 +13,7 @@ from pytest_utils.decorators import max_score, visibility, tags
 
 Then annotate your tests using the provided decorators.
 
-###max_score
+### max_score
 
 To set the maximum score for a test:
 
