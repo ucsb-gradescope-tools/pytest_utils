@@ -8,6 +8,7 @@ def pytest_runtest_makereport(item):
     x._result.max_score = getattr(item._obj, 'max_score', 0)
     x._result.visibility = getattr(item._obj, 'visibility', 'visible')
 
+
 def pytest_terminal_summary(terminalreporter, exitstatus):
     json_results = {'tests': []}
 
