@@ -13,23 +13,23 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
     json_results = {'tests': []}
 
     all_tests = []
-    if ('passed' in terminalreporter.stats):
+    if 'passed' in terminalreporter.stats:
         all_tests = all_tests + terminalreporter.stats['passed']
-    if ('failed' in terminalreporter.stats):
+    if 'failed' in terminalreporter.stats:
         all_tests = all_tests + terminalreporter.stats['failed']
 
     for s in all_tests:
-        output = ''
+        output = s.capstdout + '\n' + s.capstderr
         score = s.max_score
-        if (s.outcome == 'failed'):
+        if s.outcome == 'failed':
             score = 0
-            output = str(s.longrepr.chain[0][0].reprentries[0])
+            output += s.longreprtext
 
         json_results["tests"].append(
             {
                 'score': score,
                 'max_score': s.max_score,
-                'name': s.location[2],
+                'name': s.nodeid,
                 'output': output,
                 'visibility': s.visibility
             }
