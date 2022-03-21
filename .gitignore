@@ -1,2 +1,4 @@
 /results.json
 /.idea/
+dist/
+byu_pytest_utils/__pycache__/
