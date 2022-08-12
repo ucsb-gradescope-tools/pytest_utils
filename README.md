@@ -76,8 +76,10 @@ import byu_pytest_utils
 from byu_pytest_utils.decorators import max_score, visibility, tags
 from assignment import *
 
-class TestAssignment(object):
-    @max_score(10)
-    def test_one(self):
-        assert(hello() == "hello")
+@max_score(10)
+def test_one(self):
+    assert(hello() == "hello")
+    
 ```
+
+See also `test_example.py`
