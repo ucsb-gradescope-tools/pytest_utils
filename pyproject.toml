@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "byu_pytest_utils"
-version = "0.2.0"
+version = "0.3.3"
 description = "A few utilities for pytest to help with integration into gradescope"
 authors = ["Daniel Zappala <daniel.zappala@gmail.com>", "Gordon Bean <gbean@cs.byu.edu"]
 license = "MIT"
@@ -9,7 +9,7 @@ classifiers = [
 ]
 
 [tool.poetry.dependencies]
-python = "^3.9"
+python = "^3.8"
 pytest = "^7.0.1"
 
 [tool.poetry.plugins.pytest11]
