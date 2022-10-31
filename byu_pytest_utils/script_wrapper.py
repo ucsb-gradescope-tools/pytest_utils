@@ -1,11 +1,11 @@
+import os
 import runpy
 import sys
 from functools import wraps
 
 
 class ScriptWrapper:
-    def __init__(self, expected_output_file, input_sequence):
-        self.input_sequence = iter(str(t) for t in input_sequence)
+    def __init__(self, expected_output_file):
         with open(expected_output_file) as file:
             self.expected_output = file.read()
         self.observed_output = ""
@@ -18,10 +18,9 @@ class ScriptWrapper:
         self.observed_output += prompt
         print(prompt, end='')
         self._assert_output()
-        # If the prompt matches the expected output,
-        # then there should be a corresponding input ready,
-        # so we don't need to watch for a stop iteration
-        result = next(self.input_sequence)
+        # Input is from the current position to next newline in expected output
+        next_newline = self.expected_output.find('\n', len(self.observed_output))
+        result = self.expected_output[len(self.observed_output):next_newline]
         print(result)
         self.observed_output += result + '\n'
         return result
@@ -54,5 +53,10 @@ class ScriptWrapper:
 
 
 if __name__ == '__main__':
-    wrapper = ScriptWrapper('test_expected_output.txt', [7, 8])
-    wrapper.run_script('test_script.py')
+    expected_dialog_file = sys.argv[1]
+    script, *args = sys.argv[2:]
+    wrapper = ScriptWrapper(expected_dialog_file)
+    wrapper.run_script(script, *args)
+    # To test, run
+    # python byu_pytest_utils/script_wrapper.py test_expected_output.txt test_script.py woot
+
