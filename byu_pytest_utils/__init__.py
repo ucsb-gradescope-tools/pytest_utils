@@ -3,6 +3,7 @@ from pathlib import Path
 
 from .test_utils import compare_files, run_python, with_import
 from .decorators import max_score, visibility, tags
+from .io_checker import check_io
 
 # Type stubs to make these variables discoverable
 # Actual values are supplied by __getattr__
