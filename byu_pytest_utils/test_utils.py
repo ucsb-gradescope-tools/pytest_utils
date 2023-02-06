@@ -34,7 +34,7 @@ def run_python(*command, stdin=None):
     if proc.returncode != 0:
         pytest.fail(f'The command {" ".join(_command)} failed with exit code {proc.returncode}. '
                     f'{proc.stderr.decode()}')
-    return proc.stdout.decode()
+    return proc.stdout.decode().replace('\r','')
 
 
 def with_import(module_name=None, function_name=None):
