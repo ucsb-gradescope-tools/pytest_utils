@@ -4,6 +4,7 @@ import subprocess
 from pathlib import Path
 import inspect
 import pytest
+import sys
 
 
 def compare_files(file_1, file_2):
@@ -28,7 +29,7 @@ def run_python(*command, stdin=None):
 
     input_bytes = stdin.encode() if stdin else None
 
-    _command = ['python']
+    _command = [sys.executable]
     _command.extend((str(c) for c in command))
     proc = subprocess.run(_command, input=input_bytes, capture_output=True)
     if proc.returncode != 0:
