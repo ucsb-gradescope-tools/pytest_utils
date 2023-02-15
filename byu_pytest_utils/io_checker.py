@@ -49,7 +49,7 @@ class IOChecker:
     def _print(self, *values, **kwargs):
         sep = kwargs.get('sep', ', ')
         end = kwargs.get('end', '\n')
-        res = sep.join(str(t) for t in values) + end
+        res = " ".join(str(t) for t in values) + end
         self.observed_output += res
         self._assert_output()
         if self.echo_output:
