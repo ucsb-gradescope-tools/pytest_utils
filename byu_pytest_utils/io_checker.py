@@ -103,7 +103,7 @@ class IOChecker:
 
     @wraps(print)
     def _print(self, *values, **kwargs):
-        sep = kwargs.get('sep', ', ')
+        sep = kwargs.get('sep', ' ')
         end = kwargs.get('end', '\n')
         res = sep.join(str(t) for t in values) + end
         self._consume_output(res)
@@ -118,7 +118,10 @@ class IOChecker:
         }
 
         # Run script as __main__
-        result = runpy.run_path(script_name, _globals, module)
+        try:
+            result = runpy.run_path(script_name, _globals, module)
+        except Exception as ex:
+            pass
 
         # Final assertion of observed and expected output
         self._final_assert_output()
