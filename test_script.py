@@ -2,7 +2,7 @@ import sys
 
 
 def get_number():
-    return input('Number: ')
+    return input('Number:')
 
 
 if __name__ == '__main__':
