@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "byu_pytest_utils"
-version = "0.3.9"
+version = "0.3.10-dev"
 description = "A few utilities for pytest to help with integration into gradescope"
 authors = ["Daniel Zappala <daniel.zappala@gmail.com>", "Gordon Bean <gbean@cs.byu.edu"]
 license = "MIT"

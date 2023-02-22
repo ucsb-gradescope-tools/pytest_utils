@@ -1,6 +1,9 @@
+import math
 import os.path
+import re
 import runpy
 import sys
+import traceback
 from functools import wraps
 
 import pytest
@@ -32,74 +35,140 @@ def check_io(expected_dialog_file, script_name, *script_args, echo_output=False)
 class IOChecker:
     def __init__(self, dialogue_file, echo_output):
         self.echo_output = echo_output
+
         with open(dialogue_file) as file:
-            self.dialogue_content = file.read()
-        self.dialogue_pos = 0
-        self.expected_output = ""
+            self.inputs, self.expected_output = self._extract_input(file.read())
         self.observed_output = ""
 
-    def _assert_output(self):
-        for p, (o, e) in enumerate(zip(self.observed_output, self.expected_output)):
-            if o != e:
-                assert self.observed_output[:p] == self.expected_output[:p]
+    @staticmethod
+    def _extract_input(dialogue_contents: str):
+        # Find all tokens delimited by << and >> and return them
+        # as a list along with the original contents with the << and >> removed
+        inputs = re.findall(r'<<(.*?)>>', dialogue_contents)
+        dialogue_contents = re.sub(r'<<(.*?)>>', r'\1', dialogue_contents)
+        return inputs, dialogue_contents
 
-        assert self.observed_output == self.expected_output
+    def _assert_output(self):
+        # Pad the output with spaces so that the diff is easier to read
+        def pad(s):
+            return s + ' ' * (80 - len(s))
+
+        try:
+            assert pad(self.observed_output) == pad(self.expected_output)
+        except AssertionError as err:
+            edit_score = self.edit_dist(self.observed_output, self.expected_output)
+            err._partial_credit = round(edit_score / len(self.expected_output) * 0.8, 2)
+            raise
+
+    def edit_dist(self, observed: str, expected: str) -> float:
+        """
+        Align seq1 against seq2 using Needleman-Wunsch
+        Put seq1 on left (j) and seq2 on top (i)
+        => matrix[i][j]
+        """
+        MATCH = 1
+        SUB = -1
+        INDEL = -1
+        GAP = '-'
+
+        def get_i_j(len_i, len_j):
+            for ii in range(len_i):
+                for jj in range(len_j):
+                    yield ii, jj
+
+        len1 = len(observed)
+        len2 = len(expected)
+
+        score_matrix = {}
+        path_matrix = {}
+
+        # Initialize base cases
+        score_matrix[0, 0] = 0
+        path_matrix[0, 0] = (-1, -1)
+
+        for i in range(1, len2 + 1):
+            score_matrix[i, 0] = score_matrix[i - 1, 0] + INDEL
+            path_matrix[i, 0] = (i - 1, 0)
+
+        for j in range(1, len1 + 1):
+            score_matrix[0, j] = score_matrix[0, j - 1] + INDEL
+            path_matrix[0, j] = (0, j - 1)
+
+        # Fill in!
+        ij = get_i_j(len2, len1)
+        for i, j in ij:
+            si = i
+            i += 1  # adjust for extra row at beginning of matrix
+            sj = j
+            j += 1  # adjust for extra column at beginning of matrix
+            # Which of the three paths is best?
+            match = score_matrix[i - 1, j - 1] + (MATCH if observed[sj] == expected[si] else SUB)
+            gap_i = score_matrix.get((i - 1, j), math.inf) + INDEL
+            gap_j = score_matrix.get((i, j - 1), math.inf) + INDEL
+            # Break ties using diagonal, left (gap in i), top (gap in j)
+            if match >= gap_i and match >= gap_j:
+                score = match
+                path = (i - 1, j - 1)
+            elif gap_i >= gap_j:
+                score = gap_i
+                path = (i - 1, j)
+            else:
+                score = gap_j
+                path = (i, j - 1)
+
+            score_matrix[i, j] = score
+            path_matrix[i, j] = path
+
+        # Extract path
+        align_path = [(len2, len1)]
+        while align_path[-1] != (0, 0):
+            prev = align_path[-1]
+            align_path.append(path_matrix[prev])
+        align_path = list(reversed(align_path))
+
+        # Interpret alignment
+        align1 = ''
+        align2 = ''
+        a1 = 0
+        a2 = 0
+        for (pi, pj), (ci, cj) in zip(align_path[:-1], align_path[1:]):
+            # Is the move a match, gap1, or gap2?
+            di = ci - pi
+            dj = cj - pj
+            if di == 1 and dj == 1:  # match
+                align1 += observed[a1]
+                a1 += 1
+                align2 += expected[a2]
+                a2 += 1
+            elif di == 1:  # gap1 -> took from seq2, but not seq1
+                align1 += GAP
+                align2 += expected[a2]
+                a2 += 1
+            else:  # gap2 -> took from seq1, but not seq2
+                align1 += observed[a1]
+                a1 += 1
+                align2 += GAP
+
+        return score_matrix[len2, len1]
 
     def _final_assert_output(self):
-        # Grab whatever is left in the dialogue file
-        # add it to expected_output
-        # and assert_output
-        self.expected_output += self.dialogue_content[self.dialogue_pos:] \
-            .replace('<<', '').replace('>>', '')
-        self.dialogue_pos = len(self.dialogue_content)
         self._assert_output()
 
     def _consume_output(self, printed_text):
         self.observed_output += printed_text
-        # expected_output gets the next part of the dialogue file
-        # either the length of the printed text or to the next <<
-        # whichever comes first
-        next_input_pos = self.dialogue_content.find('<<', self.dialogue_pos)
-        if next_input_pos == -1:
-            next_input_pos = len(self.dialogue_content)
-        next_chunk_pos = min(next_input_pos, self.dialogue_pos + len(printed_text))
-        self.expected_output += self.dialogue_content[self.dialogue_pos:next_chunk_pos]
-        self.dialogue_pos = next_chunk_pos
         if self.echo_output:
             print(printed_text, end='')
-        self._assert_output()
 
     @wraps(input)
     def _input(self, prompt):
         self._consume_output(prompt)
-        # Input is found in the dialogue file between << and >>
-        # If the next part of the dialogue file is not an input, then
-        #   add the missing text to the expected output
-        if not self.dialogue_content[self.dialogue_pos:].startswith('<<'):
-            # The user didn't print enough before calling input
-            # Add the missing text to the expected output
-            # and assert_output
-            next_input_pos = self.dialogue_content.find('<<', self.dialogue_pos)
-            if next_input_pos == -1:
-                next_input_pos = len(self.dialogue_content)
-            self.expected_output += self.dialogue_content[self.dialogue_pos:next_input_pos]
-            self.dialogue_pos = next_input_pos
-            self._assert_output()
-        else:
-            # The user printed enough before calling input
-            # Consume the input from the dialogue file
-            self.dialogue_pos += 2
-            end_input_pos = self.dialogue_content.find('>>', self.dialogue_pos)
-            if end_input_pos == -1:
-                raise Exception("Missing >> in dialogue file")
-            input_text = self.dialogue_content[self.dialogue_pos:end_input_pos]
-            # advance past the >> and the newline
-            self.dialogue_pos = end_input_pos + 3
-            self.expected_output += input_text + '\n'
-            self.observed_output += input_text + '\n'
-            if self.echo_output:
-                print(input_text)
-            return input_text
+        if not self.inputs:
+            raise Exception("input() called more times than expected")
+        input_text = self.inputs.pop(0)
+        self._consume_output(input_text + '\n')
+        if self.echo_output:
+            print(input_text)
+        return input_text
 
     @wraps(print)
     def _print(self, *values, **kwargs):
@@ -121,7 +190,10 @@ class IOChecker:
         try:
             result = runpy.run_path(script_name, _globals, module)
         except Exception as ex:
-            pass
+            result = None
+            # get stack trace as string
+            self._consume_output(f'\nException: {ex}\n')
+            self._consume_output(traceback.format_exc())
 
         # Final assertion of observed and expected output
         self._final_assert_output()
@@ -150,7 +222,7 @@ class IOCheckerObsolete:
         self._assert_output()
         # Input is from the current position to next newline in expected output
         next_newline = self.expected_output.find('\n', len(self.observed_output))
-        result = self.expected_output[len(self.observed_output):next_newline]
+        result = self.expected_output[len(self.observed_output):next_newline].strip()
         if self.echo_output:
             print(result)
         self.observed_output += result + '\n'
