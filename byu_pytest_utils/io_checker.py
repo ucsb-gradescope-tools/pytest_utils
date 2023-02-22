@@ -1,3 +1,4 @@
+import argparse
 import math
 import os.path
 import re
@@ -32,11 +33,37 @@ def check_io(expected_dialog_file, script_name, *script_args, echo_output=False)
             return wrapper.run_script(script_name, *script_args)
 
 
+def record_script(dialog_file, script_name, *script_args):
+    # Intercept input, print, and sys.argv
+    sys.argv = [script_name, *(str(a) for a in script_args)]
+    with open(dialog_file, 'w') as file:
+        def _input(prompt):
+            file.write(prompt)
+            response = input(prompt)
+            file.write(f'<<{response}>>\n')
+            return response
+
+        def _print(*args, **kwargs):
+            print(*args, **kwargs)
+            print(*args, **kwargs, file=file)
+
+        _globals = {
+            'input': _input,
+            'print': _print,
+            'sys': sys
+        }
+
+        # Run script as __main__
+        result = runpy.run_path(script_name, _globals, '__main__')
+
+    return result
+
+
 class IOChecker:
-    def __init__(self, dialogue_file, echo_output):
+    def __init__(self, dialog_file, echo_output):
         self.echo_output = echo_output
 
-        with open(dialogue_file) as file:
+        with open(dialog_file) as file:
             self.inputs, self.expected_output = self._extract_input(file.read())
         self.observed_output = ""
 
@@ -126,7 +153,7 @@ class IOChecker:
             align_path.append(path_matrix[prev])
         align_path = list(reversed(align_path))
 
-        # Interpret alignment
+        # Interpret alignment (currently unused, but maybe handy?)
         align1 = ''
         align2 = ''
         a1 = 0
@@ -257,8 +284,10 @@ class IOCheckerObsolete:
 
 
 if __name__ == '__main__':
-    expected_dialog_file = sys.argv[1]
-    script, *args = sys.argv[2:]
-    check_io(expected_dialog_file, script, *args, echo_output=True)
-    # To test from the command line, run
-    # python -m byu_pytest_utils.io_checker test_expected_output.txt test_script.py woot
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dialog_file', help='Dialog file to write')
+    parser.add_argument('python_script', help='Python script to run')
+    parser.add_argument('script_args', nargs='*', help='Arguments to the python script (if any)')
+    args = parser.parse_args()
+
+    record_script(args.dialog_file, args.python_script, *args.script_args)
