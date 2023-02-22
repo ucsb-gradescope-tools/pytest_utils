@@ -57,7 +57,7 @@ class IOChecker:
             assert pad(self.observed_output) == pad(self.expected_output)
         except AssertionError as err:
             edit_score = self.edit_dist(self.observed_output, self.expected_output)
-            err._partial_credit = round(edit_score / len(self.expected_output) * 0.8, 2)
+            err._partial_credit = max(0.0, round(edit_score / len(self.expected_output) * 0.8, 2))
             raise
 
     def edit_dist(self, observed: str, expected: str) -> float:
