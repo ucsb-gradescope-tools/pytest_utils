@@ -257,7 +257,7 @@ class IOCheckerObsolete:
 
     @wraps(print)
     def _print(self, *values, **kwargs):
-        sep = kwargs.get('sep', ', ')
+        sep = kwargs.get('sep', ' ')
         end = kwargs.get('end', '\n')
         res = sep.join(str(t) for t in values) + end
         self.observed_output += res
