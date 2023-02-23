@@ -7,8 +7,6 @@ import sys
 import traceback
 from functools import wraps
 
-import pytest
-
 
 def check_io(expected_dialog_file, script_name, *script_args, echo_output=False):
     """
@@ -60,11 +58,16 @@ def record_script(dialog_file, script_name, *script_args):
 
 
 class IOChecker:
+    DEFAULT_GROUP = '.'
+    MAX_PARTIAL_CREDIT = 0.9
+
     def __init__(self, dialog_file, echo_output):
         self.echo_output = echo_output
 
         with open(dialog_file) as file:
-            self.inputs, self.expected_output = self._extract_input(file.read())
+            text = file.read()
+            self.inputs, no_inputs = self._extract_input(text)
+            self.weights, self.groups, self.expected_output = self._extract_weights(no_inputs)
         self.observed_output = ""
 
     @staticmethod
@@ -75,6 +78,45 @@ class IOChecker:
         dialogue_contents = re.sub(r'<<(.*?)>>', r'\1', dialogue_contents)
         return inputs, dialogue_contents
 
+    @staticmethod
+    def _extract_weights(dialog_contents: str):
+        # blah blah [[foo;10]] blah blah
+        group_weights = {IOChecker.DEFAULT_GROUP: 0}
+        groups = ''
+        # Iterate through the dialog contents
+        # Characters not in a group are assigned to weight group 'a'
+        # Each weight group is assigned the next letter of the alphabet
+        # A group starts with [[ and ends with ]]
+        # The semicolon separates the group text from the weight
+        # All text in a group is assigned to the same weight group
+        # e.g.
+        # quux [[foo;30]] bar [[baz;20]] quux
+        # produces groups: aaaaabbbaaaacccaaaa
+        # and group_weights: {'-': 40, 'b': 30, 'c': 20}
+        i = 0
+        while i < len(dialog_contents):
+            if dialog_contents[i:i + 2] == '[[':
+                # Start of a group
+                group_name = chr(ord('a') - 1 + len(group_weights))
+                group_match = re.search(r'\[\[(.*?);(\d+?)\]\]', dialog_contents[i:], flags=re.DOTALL)
+                group_text = group_match.group(1)
+                group_weights[group_name] = int(group_match.group(2))
+                groups += group_name * len(group_text)
+                i += group_match.end()
+            else:
+                # Not in a group
+                groups += IOChecker.DEFAULT_GROUP
+                i += 1
+        total = sum(group_weights.values())
+        if total > 100:
+            raise Exception('Group weights must add up to 100 or less')
+        group_weights[IOChecker.DEFAULT_GROUP] = 100 - total
+
+        # Then remove the groups from the dialog contents
+        dialog_contents = re.sub(r'\[\[(.*?);(.+?)\]\]', r'\1', dialog_contents, flags=re.DOTALL)
+
+        return group_weights, groups, dialog_contents
+
     def _assert_output(self):
         # Pad the output with spaces so that the diff is easier to read
         def pad(s):
@@ -83,11 +125,55 @@ class IOChecker:
         try:
             assert pad(self.observed_output) == pad(self.expected_output)
         except AssertionError as err:
-            edit_score = self.edit_dist(self.observed_output, self.expected_output)
-            err._partial_credit = max(0.0, round(edit_score / len(self.expected_output) * 0.8, 2))
+            edit_score, obs, exp = self.edit_dist(self.observed_output, self.expected_output)
+            # Cap partial credit at 90%
+            # The last 10% is for getting everything correct
+            err._partial_credit = IOChecker.MAX_PARTIAL_CREDIT * self._compute_partial_credit(obs, exp)
             raise
 
-    def edit_dist(self, observed: str, expected: str) -> float:
+    def _compute_partial_credit(self, obs, exp):
+        # insert gaps (i.e. DEFAULT_GROUP) into self.groups to match exp
+        # then iterate over obs, exp, and groups
+        # to compute rate of matches per group
+        # (a gap in obs counts as group DEFAULT_GROUP)
+        # and return the weighted average
+        # e.g. if groups is '---bbbccc'
+        # and group_weights is {'-': 50, 'b': 20, 'c': 30}
+        # and exp is 'foobar`baz'
+        # and obs is 'boobarflaz'
+        # then groups should become '---bbb-ccc'
+        # and the weighted average should be
+        #   2/4 * 50 + 3/3 * 20 + 2/3 * 30 = 65
+        if len(exp) - exp.count('`') != len(self.groups):
+            raise Exception('Too many gaps in expected output')
+        groups = ''
+        i = 0
+        g = 0
+        while i < len(exp):
+            if exp[i] == '`':
+                groups += IOChecker.DEFAULT_GROUP
+                i += 1
+            else:
+                groups += self.groups[g]
+                g += 1
+                i += 1
+        assert len(groups) == len(exp)
+
+        # Compute weighted average
+        group_counts = {}
+        group_matches = {}
+        for obs_c, exp_c, group in zip(obs, exp, groups):
+            if obs_c == exp_c:
+                group_matches[group] = group_matches.get(group, 0) + 1
+            group_counts[group] = group_counts.get(group, 0) + 1
+
+        weighted_sum = 0
+        for group, count in group_counts.items():
+            weighted_sum += group_matches.get(group, 0) / count * self.weights[group]
+
+        return round(weighted_sum / 100, 4)
+
+    def edit_dist(self, observed: str, expected: str):
         """
         Align seq1 against seq2 using Needleman-Wunsch
         Put seq1 on left (j) and seq2 on top (i)
@@ -96,7 +182,7 @@ class IOChecker:
         MATCH = 1
         SUB = -1
         INDEL = -1
-        GAP = '-'
+        GAP = '`'
 
         def get_i_j(len_i, len_j):
             for ii in range(len_i):
@@ -176,7 +262,7 @@ class IOChecker:
                 a1 += 1
                 align2 += GAP
 
-        return score_matrix[len2, len1]
+        return score_matrix[len2, len1], align1, align2
 
     def _final_assert_output(self):
         self._assert_output()

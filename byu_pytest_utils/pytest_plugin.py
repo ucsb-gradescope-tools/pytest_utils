@@ -52,7 +52,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
 
         json_results["tests"].append(
             {
-                'score': score,
+                'score': round(score, 4),
                 'max_score': max_score,
                 'name': s.nodeid,
                 'output': output,
