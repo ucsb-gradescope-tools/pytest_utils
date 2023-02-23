@@ -59,7 +59,7 @@ def record_script(dialog_file, script_name, *script_args):
 
 class IOChecker:
     DEFAULT_GROUP = '.'
-    MAX_PARTIAL_CREDIT = 0.9
+    MAX_PARTIAL_CREDIT = 1
 
     def __init__(self, dialog_file, echo_output):
         self.echo_output = echo_output
