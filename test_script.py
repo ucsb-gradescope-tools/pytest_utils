@@ -10,4 +10,4 @@ if __name__ == '__main__':
     num = get_number()
     print(f'The number is {num}')
     num = get_number()
-    print(f'Another number is {num}')
+    print(f'Another number is 2')

@@ -1,12 +1,17 @@
+import argparse
+import math
 import os.path
+import re
 import runpy
 import sys
+import traceback
 from functools import wraps
 
 
 def check_io(expected_dialog_file, script_name, *script_args, echo_output=False):
     """
     Run the script and check it's input and print calls against the expected dialog
+    :param echo_output:
     :param expected_dialog_file: A file that contains the expected dialog of the script
     :param script_name: Name of script (including necessary path and .py extension) being called
     :param script_args: Command-line arguments to the script
@@ -15,11 +20,301 @@ def check_io(expected_dialog_file, script_name, *script_args, echo_output=False)
     if not os.path.exists(script_name):
         raise Exception(f'{script_name} not found. Was it submitted?')
 
-    wrapper = IOChecker(expected_dialog_file, echo_output)
-    return wrapper.run_script(script_name, *script_args)
+    with open(expected_dialog_file) as file:
+        if "<<" not in file.read():
+            # Old behavior
+            wrapper = IOCheckerObsolete(expected_dialog_file, echo_output)
+            return wrapper.run_script(script_name, *script_args)
+        else:
+            # New behavior
+            wrapper = IOChecker(expected_dialog_file, echo_output)
+            return wrapper.run_script(script_name, *script_args)
+
+
+def record_script(dialog_file, script_name, *script_args):
+    # Intercept input, print, and sys.argv
+    sys.argv = [script_name, *(str(a) for a in script_args)]
+    with open(dialog_file, 'w') as file:
+        def _input(prompt):
+            file.write(prompt)
+            response = input(prompt)
+            file.write(f'<<{response}>>\n')
+            return response
+
+        def _print(*args, **kwargs):
+            print(*args, **kwargs)
+            print(*args, **kwargs, file=file)
+
+        _globals = {
+            'input': _input,
+            'print': _print,
+            'sys': sys
+        }
+
+        # Run script as __main__
+        result = runpy.run_path(script_name, _globals, '__main__')
+
+    return result
 
 
 class IOChecker:
+    DEFAULT_GROUP = '.'
+    MAX_PARTIAL_CREDIT = 1
+
+    def __init__(self, dialog_file, echo_output):
+        self.echo_output = echo_output
+
+        with open(dialog_file) as file:
+            text = file.read()
+            self.inputs, no_inputs = self._extract_input(text)
+            self.weights, self.groups, self.expected_output = self._extract_weights(no_inputs)
+        self.observed_output = ""
+
+    @staticmethod
+    def _extract_input(dialogue_contents: str):
+        # Find all tokens delimited by << and >> and return them
+        # as a list along with the original contents with the << and >> removed
+        inputs = re.findall(r'<<(.*?)>>', dialogue_contents)
+        dialogue_contents = re.sub(r'<<(.*?)>>', r'\1', dialogue_contents)
+        return inputs, dialogue_contents
+
+    @staticmethod
+    def _extract_weights(dialog_contents: str):
+        # blah blah [[foo;10]] blah blah
+        group_weights = {IOChecker.DEFAULT_GROUP: 0}
+        groups = ''
+        # Iterate through the dialog contents
+        # Characters not in a group are assigned to weight group 'a'
+        # Each weight group is assigned the next letter of the alphabet
+        # A group starts with [[ and ends with ]]
+        # The semicolon separates the group text from the weight
+        # All text in a group is assigned to the same weight group
+        # e.g.
+        # quux [[foo;30]] bar [[baz;20]] quux
+        # produces groups: aaaaabbbaaaacccaaaa
+        # and group_weights: {'-': 40, 'b': 30, 'c': 20}
+        i = 0
+        while i < len(dialog_contents):
+            if dialog_contents[i:i + 2] == '[[':
+                # Start of a group
+                group_name = chr(ord('a') - 1 + len(group_weights))
+                group_match = re.search(r'\[\[(.*?);(\d+?)\]\]', dialog_contents[i:], flags=re.DOTALL)
+                group_text = group_match.group(1)
+                group_weights[group_name] = int(group_match.group(2))
+                groups += group_name * len(group_text)
+                i += group_match.end()
+            else:
+                # Not in a group
+                groups += IOChecker.DEFAULT_GROUP
+                i += 1
+        total = sum(group_weights.values())
+        if total > 100:
+            raise Exception('Group weights must add up to 100 or less')
+        group_weights[IOChecker.DEFAULT_GROUP] = 100 - total
+
+        # Then remove the groups from the dialog contents
+        dialog_contents = re.sub(r'\[\[(.*?);(.+?)\]\]', r'\1', dialog_contents, flags=re.DOTALL)
+
+        return group_weights, groups, dialog_contents
+
+    def _assert_output(self):
+        # Pad the output with spaces so that the diff is easier to read
+        def pad(s):
+            return s + ' ' * (80 - len(s))
+
+        try:
+            assert pad(self.observed_output) == pad(self.expected_output)
+        except AssertionError as err:
+            edit_score, obs, exp = self.edit_dist(self.observed_output, self.expected_output)
+            # Cap partial credit at 90%
+            # The last 10% is for getting everything correct
+            err._partial_credit = IOChecker.MAX_PARTIAL_CREDIT * self._compute_partial_credit(obs, exp)
+            raise
+
+    def _compute_partial_credit(self, obs, exp):
+        # insert gaps (i.e. DEFAULT_GROUP) into self.groups to match exp
+        # then iterate over obs, exp, and groups
+        # to compute rate of matches per group
+        # (a gap in obs counts as group DEFAULT_GROUP)
+        # and return the weighted average
+        # e.g. if groups is '---bbbccc'
+        # and group_weights is {'-': 50, 'b': 20, 'c': 30}
+        # and exp is 'foobar`baz'
+        # and obs is 'boobarflaz'
+        # then groups should become '---bbb-ccc'
+        # and the weighted average should be
+        #   2/4 * 50 + 3/3 * 20 + 2/3 * 30 = 65
+        if len(exp) - exp.count('`') != len(self.groups):
+            raise Exception('Too many gaps in expected output')
+        groups = ''
+        i = 0
+        g = 0
+        while i < len(exp):
+            if exp[i] == '`':
+                groups += IOChecker.DEFAULT_GROUP
+                i += 1
+            else:
+                groups += self.groups[g]
+                g += 1
+                i += 1
+        assert len(groups) == len(exp)
+
+        # Compute weighted average
+        group_counts = {}
+        group_matches = {}
+        for obs_c, exp_c, group in zip(obs, exp, groups):
+            if obs_c == exp_c:
+                group_matches[group] = group_matches.get(group, 0) + 1
+            group_counts[group] = group_counts.get(group, 0) + 1
+
+        weighted_sum = 0
+        for group, count in group_counts.items():
+            weighted_sum += group_matches.get(group, 0) / count * self.weights[group]
+
+        return round(weighted_sum / 100, 4)
+
+    def edit_dist(self, observed: str, expected: str):
+        """
+        Align seq1 against seq2 using Needleman-Wunsch
+        Put seq1 on left (j) and seq2 on top (i)
+        => matrix[i][j]
+        """
+        MATCH = 1
+        SUB = -1
+        INDEL = -1
+        GAP = '`'
+
+        def get_i_j(len_i, len_j):
+            for ii in range(len_i):
+                for jj in range(len_j):
+                    yield ii, jj
+
+        len1 = len(observed)
+        len2 = len(expected)
+
+        score_matrix = {}
+        path_matrix = {}
+
+        # Initialize base cases
+        score_matrix[0, 0] = 0
+        path_matrix[0, 0] = (-1, -1)
+
+        for i in range(1, len2 + 1):
+            score_matrix[i, 0] = score_matrix[i - 1, 0] + INDEL
+            path_matrix[i, 0] = (i - 1, 0)
+
+        for j in range(1, len1 + 1):
+            score_matrix[0, j] = score_matrix[0, j - 1] + INDEL
+            path_matrix[0, j] = (0, j - 1)
+
+        # Fill in!
+        ij = get_i_j(len2, len1)
+        for i, j in ij:
+            si = i
+            i += 1  # adjust for extra row at beginning of matrix
+            sj = j
+            j += 1  # adjust for extra column at beginning of matrix
+            # Which of the three paths is best?
+            match = score_matrix[i - 1, j - 1] + (MATCH if observed[sj] == expected[si] else SUB)
+            gap_i = score_matrix.get((i - 1, j), math.inf) + INDEL
+            gap_j = score_matrix.get((i, j - 1), math.inf) + INDEL
+            # Break ties using diagonal, left (gap in i), top (gap in j)
+            if match >= gap_i and match >= gap_j:
+                score = match
+                path = (i - 1, j - 1)
+            elif gap_i >= gap_j:
+                score = gap_i
+                path = (i - 1, j)
+            else:
+                score = gap_j
+                path = (i, j - 1)
+
+            score_matrix[i, j] = score
+            path_matrix[i, j] = path
+
+        # Extract path
+        align_path = [(len2, len1)]
+        while align_path[-1] != (0, 0):
+            prev = align_path[-1]
+            align_path.append(path_matrix[prev])
+        align_path = list(reversed(align_path))
+
+        # Interpret alignment (currently unused, but maybe handy?)
+        align1 = ''
+        align2 = ''
+        a1 = 0
+        a2 = 0
+        for (pi, pj), (ci, cj) in zip(align_path[:-1], align_path[1:]):
+            # Is the move a match, gap1, or gap2?
+            di = ci - pi
+            dj = cj - pj
+            if di == 1 and dj == 1:  # match
+                align1 += observed[a1]
+                a1 += 1
+                align2 += expected[a2]
+                a2 += 1
+            elif di == 1:  # gap1 -> took from seq2, but not seq1
+                align1 += GAP
+                align2 += expected[a2]
+                a2 += 1
+            else:  # gap2 -> took from seq1, but not seq2
+                align1 += observed[a1]
+                a1 += 1
+                align2 += GAP
+
+        return score_matrix[len2, len1], align1, align2
+
+    def _final_assert_output(self):
+        self._assert_output()
+
+    def _consume_output(self, printed_text):
+        self.observed_output += printed_text
+        if self.echo_output:
+            print(printed_text, end='')
+
+    @wraps(input)
+    def _input(self, prompt):
+        self._consume_output(prompt)
+        if not self.inputs:
+            raise Exception("input() called more times than expected")
+        input_text = self.inputs.pop(0)
+        self._consume_output(input_text + '\n')
+        if self.echo_output:
+            print(input_text)
+        return input_text
+
+    @wraps(print)
+    def _print(self, *values, **kwargs):
+        sep = kwargs.get('sep', ' ')
+        end = kwargs.get('end', '\n')
+        res = sep.join(str(t) for t in values) + end
+        self._consume_output(res)
+
+    def run_script(self, script_name, *args, module='__main__'):
+        # Intercept input, print, and sys.argv
+        sys.argv = [script_name, *(str(a) for a in args)]
+        _globals = {
+            'input': self._input,
+            'print': self._print,
+            'sys': sys
+        }
+
+        # Run script as __main__
+        try:
+            result = runpy.run_path(script_name, _globals, module)
+        except Exception as ex:
+            result = None
+            # get stack trace as string
+            self._consume_output(f'\nException: {ex}\n')
+            self._consume_output(traceback.format_exc())
+
+        # Final assertion of observed and expected output
+        self._final_assert_output()
+
+        return result
+
+
+class IOCheckerObsolete:
     def __init__(self, expected_output_file, echo_output):
         self.echo_output = echo_output
         with open(expected_output_file) as file:
@@ -29,7 +324,8 @@ class IOChecker:
     def _assert_output(self):
         if self.observed_output != self.expected_output[:len(self.observed_output)]:
             next_newline = self.expected_output.find('\n', len(self.observed_output))
-            assert self.observed_output == self.expected_output[:next_newline], "Program output did not match expected output"
+            assert self.observed_output == self.expected_output[
+                                           :next_newline], "Program output did not match expected output"
 
     @wraps(input)
     def _input(self, prompt):
@@ -39,7 +335,7 @@ class IOChecker:
         self._assert_output()
         # Input is from the current position to next newline in expected output
         next_newline = self.expected_output.find('\n', len(self.observed_output))
-        result = self.expected_output[len(self.observed_output):next_newline]
+        result = self.expected_output[len(self.observed_output):next_newline].strip()
         if self.echo_output:
             print(result)
         self.observed_output += result + '\n'
@@ -47,7 +343,7 @@ class IOChecker:
 
     @wraps(print)
     def _print(self, *values, **kwargs):
-        sep = kwargs.get('sep', ', ')
+        sep = kwargs.get('sep', ' ')
         end = kwargs.get('end', '\n')
         res = sep.join(str(t) for t in values) + end
         self.observed_output += res
@@ -57,7 +353,7 @@ class IOChecker:
 
     def run_script(self, script_name, *args):
         # Intercept input, print, and sys.argv
-        sys.argv = [script_name, *(str(a) for a  in args)]
+        sys.argv = [script_name, *(str(a) for a in args)]
         _globals = {
             'input': self._input,
             'print': self._print,
@@ -74,9 +370,10 @@ class IOChecker:
 
 
 if __name__ == '__main__':
-    expected_dialog_file = sys.argv[1]
-    script, *args = sys.argv[2:]
-    check_io(expected_dialog_file, script, *args, echo_output=True)
-    # To test from the command line, run
-    # python -m byu_pytest_utils.io_checker test_expected_output.txt test_script.py woot
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dialog_file', help='Dialog file to write')
+    parser.add_argument('python_script', help='Python script to run')
+    parser.add_argument('script_args', nargs='*', help='Arguments to the python script (if any)')
+    args = parser.parse_args()
 
+    record_script(args.dialog_file, args.python_script, *args.script_args)
