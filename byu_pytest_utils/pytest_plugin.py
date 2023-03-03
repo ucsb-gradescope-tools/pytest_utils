@@ -2,9 +2,53 @@ import pytest
 import json
 
 metadata = {}
+test_group_stats = {}
+
+MIN_LINES_DIFF = 3
 
 
-# @pytest.mark.hookwrapper
+def pytest_assertrepr_compare(config, op, left, right):
+    if op == '==' \
+            and isinstance(left, str) and len(left_lines := left.splitlines()) > MIN_LINES_DIFF \
+            and isinstance(right, str) and len(right_lines := right.splitlines()) > MIN_LINES_DIFF:
+        # Use custom side-by-side assertion diff
+        # How wide?
+        left_width = max((len(line) for line in left_lines))
+        right_width = max((len(line) for line in right_lines))
+        left_view_lines = [f"{line:<{left_width}}" for line in left_lines]
+        right_view_lines = [f"{line:<{right_width}}" for line in right_lines]
+
+        # Pad with empty lines
+        while len(left_view_lines) < len(right_view_lines):
+            left_view_lines.append(' ' * left_width)
+        while len(right_view_lines) < len(left_view_lines):
+            right_view_lines.append(' ' * right_width)
+
+        # Join lines side by side
+        diff_view = [
+            'Observed (left) == Expected (right)',
+            *(l + ' | ' + r for l, r in zip(left_view_lines, right_view_lines))
+        ]
+        return diff_view
+
+
+def pytest_generate_tests(metafunc):
+    if hasattr(metafunc.function, '_group_stats'):
+        group_stats = metafunc.function._group_stats
+
+        for group_name, stats in group_stats.items():
+            stats['max_score'] *= getattr(metafunc.function, 'max_score', 0)
+            stats['score'] *= getattr(metafunc.function, 'max_score', 0)
+            test_name = f'{metafunc.function.__name__}[{group_name}]'
+            test_group_stats[test_name] = stats
+
+        metafunc.parametrize('group_name', group_stats.keys())
+    else:
+        test_group_stats[metafunc.function.__name__] = {
+            'max_score': getattr(metafunc.function, 'max_score', 0)
+        }
+
+
 @pytest.hookimpl(hookwrapper=True)
 def pytest_runtest_makereport(item):
     x = yield
@@ -13,11 +57,11 @@ def pytest_runtest_makereport(item):
     metadata[item._obj]['max_score'] = getattr(item._obj, 'max_score', 0)
     metadata[item._obj]['visibility'] = getattr(item._obj, 'visibility', 'visible')
     x._result.metadata_key = item._obj
-    # x._result.visibility = getattr(item._obj, 'visibility', 'visible')
 
 
 @pytest.hookimpl(hookwrapper=True)
 def pytest_pyfunc_call(pyfuncitem):
+    # Deprecated function - remove with CheckIO stuff
     outcome = yield
     excinfo = outcome.excinfo
     if excinfo is not None \
@@ -37,18 +81,12 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
 
     for s in all_tests:
         output = s.capstdout + '\n' + s.capstderr
-        meta = metadata[s.metadata_key]
-        max_score = meta['max_score']
+        group_stats = test_group_stats[s.head_line]
 
-        score = max_score
+        max_score = group_stats['max_score']
+        score = group_stats.get('score', max_score if s.passed else 0)
 
-        if 'partial_credit' in meta:
-            score = max_score * meta['partial_credit']
-            output += s.longreprtext
-
-        elif s.outcome == 'failed':
-            score = 0
-            output += s.longreprtext
+        output += s.longreprtext
 
         json_results["tests"].append(
             {
@@ -56,7 +94,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
                 'max_score': max_score,
                 'name': s.nodeid,
                 'output': output,
-                'visibility': meta['visibility']
+                'visibility': 'visible',
             }
         )
 

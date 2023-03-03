@@ -3,7 +3,7 @@ from pathlib import Path
 import pytest
 
 pytest.register_assert_rewrite("byu_pytest_utils.io_checker")
-
+pytest.register_assert_rewrite("byu_pytest_utils.dialog")
 
 from .test_utils import compare_files, run_python, with_import
 from .decorators import max_score, visibility, tags

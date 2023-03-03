@@ -1,7 +1,7 @@
-My args are ['test_script.py', 'woot']
+My args are ``['test_script.py', 'woot'];args;10``
 Number: <<7>>
-The number is 7
+The number is ``7;seven;10``
 Number: <<8>>
-Another number is 8
+Another number is ``8;eight;10``
 Number: <<9>>
-Yep: 9
+Yep: ``9;nine;10``
