@@ -1,11 +1,12 @@
 import argparse
-import math
 import os.path
 import re
 import runpy
 import sys
 import traceback
 from functools import wraps
+
+from byu_pytest_utils.edit_dist import edit_dist
 
 
 def check_io(expected_dialog_file, script_name, *script_args, echo_output=False):
@@ -98,7 +99,7 @@ class IOChecker:
             if dialog_contents[i:i + 2] == '[[':
                 # Start of a group
                 group_name = chr(ord('a') - 1 + len(group_weights))
-                group_match = re.search(r'\[\[(.*?);(\d+?)\]\]', dialog_contents[i:], flags=re.DOTALL)
+                group_match = re.search(r'\[\[(.*?);(\d+?)]]', dialog_contents[i:], flags=re.DOTALL)
                 group_text = group_match.group(1)
                 group_weights[group_name] = int(group_match.group(2))
                 groups += group_name * len(group_text)
@@ -113,7 +114,7 @@ class IOChecker:
         group_weights[IOChecker.DEFAULT_GROUP] = 100 - total
 
         # Then remove the groups from the dialog contents
-        dialog_contents = re.sub(r'\[\[(.*?);(.+?)\]\]', r'\1', dialog_contents, flags=re.DOTALL)
+        dialog_contents = re.sub(r'\[\[(.*?);(.+?)]]', r'\1', dialog_contents, flags=re.DOTALL)
 
         return group_weights, groups, dialog_contents
 
@@ -125,7 +126,12 @@ class IOChecker:
         try:
             assert pad(self.observed_output) == pad(self.expected_output)
         except AssertionError as err:
-            edit_score, obs, exp = self.edit_dist(self.observed_output, self.expected_output)
+            edit_score, obs, exp = edit_dist(
+                self.observed_output,
+                self.expected_output,
+                GAP='`'
+            )
+
             # Cap partial credit at 90%
             # The last 10% is for getting everything correct
             err._partial_credit = IOChecker.MAX_PARTIAL_CREDIT * self._compute_partial_credit(obs, exp)
@@ -172,97 +178,6 @@ class IOChecker:
             weighted_sum += group_matches.get(group, 0) / count * self.weights[group]
 
         return round(weighted_sum / 100, 4)
-
-    def edit_dist(self, observed: str, expected: str):
-        """
-        Align seq1 against seq2 using Needleman-Wunsch
-        Put seq1 on left (j) and seq2 on top (i)
-        => matrix[i][j]
-        """
-        MATCH = 1
-        SUB = -1
-        INDEL = -1
-        GAP = '`'
-
-        def get_i_j(len_i, len_j):
-            for ii in range(len_i):
-                for jj in range(len_j):
-                    yield ii, jj
-
-        len1 = len(observed)
-        len2 = len(expected)
-
-        score_matrix = {}
-        path_matrix = {}
-
-        # Initialize base cases
-        score_matrix[0, 0] = 0
-        path_matrix[0, 0] = (-1, -1)
-
-        for i in range(1, len2 + 1):
-            score_matrix[i, 0] = score_matrix[i - 1, 0] + INDEL
-            path_matrix[i, 0] = (i - 1, 0)
-
-        for j in range(1, len1 + 1):
-            score_matrix[0, j] = score_matrix[0, j - 1] + INDEL
-            path_matrix[0, j] = (0, j - 1)
-
-        # Fill in!
-        ij = get_i_j(len2, len1)
-        for i, j in ij:
-            si = i
-            i += 1  # adjust for extra row at beginning of matrix
-            sj = j
-            j += 1  # adjust for extra column at beginning of matrix
-            # Which of the three paths is best?
-            match = score_matrix[i - 1, j - 1] + (MATCH if observed[sj] == expected[si] else SUB)
-            gap_i = score_matrix.get((i - 1, j), math.inf) + INDEL
-            gap_j = score_matrix.get((i, j - 1), math.inf) + INDEL
-            # Break ties using diagonal, left (gap in i), top (gap in j)
-            if match >= gap_i and match >= gap_j:
-                score = match
-                path = (i - 1, j - 1)
-            elif gap_i >= gap_j:
-                score = gap_i
-                path = (i - 1, j)
-            else:
-                score = gap_j
-                path = (i, j - 1)
-
-            score_matrix[i, j] = score
-            path_matrix[i, j] = path
-
-        # Extract path
-        align_path = [(len2, len1)]
-        while align_path[-1] != (0, 0):
-            prev = align_path[-1]
-            align_path.append(path_matrix[prev])
-        align_path = list(reversed(align_path))
-
-        # Interpret alignment (currently unused, but maybe handy?)
-        align1 = ''
-        align2 = ''
-        a1 = 0
-        a2 = 0
-        for (pi, pj), (ci, cj) in zip(align_path[:-1], align_path[1:]):
-            # Is the move a match, gap1, or gap2?
-            di = ci - pi
-            dj = cj - pj
-            if di == 1 and dj == 1:  # match
-                align1 += observed[a1]
-                a1 += 1
-                align2 += expected[a2]
-                a2 += 1
-            elif di == 1:  # gap1 -> took from seq2, but not seq1
-                align1 += GAP
-                align2 += expected[a2]
-                a2 += 1
-            else:  # gap2 -> took from seq1, but not seq2
-                align1 += observed[a1]
-                a1 += 1
-                align2 += GAP
-
-        return score_matrix[len2, len1], align1, align2
 
     def _final_assert_output(self):
         self._assert_output()
