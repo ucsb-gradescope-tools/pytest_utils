@@ -1,6 +1,7 @@
 import importlib
 import os.path
 import subprocess
+from functools import wraps
 from pathlib import Path
 import inspect
 import pytest
@@ -50,6 +51,7 @@ def with_import(module_name=None, function_name=None):
         function_name = function_name or first_param
         module_name = module_name or function_name
 
+        @wraps(test_function)
         def new_test_function(*args, **kwargs):
             try:
                 module = importlib.import_module(module_name)

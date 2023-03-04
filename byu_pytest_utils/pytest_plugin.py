@@ -44,7 +44,7 @@ def pytest_generate_tests(metafunc):
 
         metafunc.parametrize('group_name', group_stats.keys())
     else:
-        test_group_stats[metafunc.function.__name__] = {
+        test_group_stats[metafunc.definition.name] = {
             'max_score': getattr(metafunc.function, 'max_score', 0)
         }
 
