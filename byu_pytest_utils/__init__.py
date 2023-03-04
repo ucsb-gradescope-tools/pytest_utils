@@ -8,6 +8,7 @@ pytest.register_assert_rewrite("byu_pytest_utils.dialog")
 from .test_utils import compare_files, run_python, with_import
 from .decorators import max_score, visibility, tags
 from .io_checker import check_io
+from .dialog import dialog
 
 # Type stubs to make these variables discoverable
 # Actual values are supplied by __getattr__
