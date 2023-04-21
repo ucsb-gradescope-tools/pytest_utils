@@ -1,0 +1,3 @@
+My args are ['script_for_dialog_passes.py', 'woot']
+Number: <<7>>
+The number is ``7;seven;50``

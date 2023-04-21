@@ -6,13 +6,19 @@ from pathlib import Path
 import inspect
 import pytest
 import sys
+from .edit_dist import edit_dist
+
+def compare_files(observed_file, expected_file):
+    with open(expected_file) as exp_f:
+        with open(observed_file) as obs_f:
+            score, obs, exp = edit_dist(obs_f.read(), exp_f.read())
 
 
-def compare_files(file_1, file_2):
-    with open(file_1) as f1:
-        with open(file_2) as f2:
-            expected = f1.read().strip()
-            observed = f2.read().strip()
+def compare_files(expected_file, observed_file):
+    with open(expected_file) as exp_f:
+        with open(observed_file) as obs_f:
+            expected = exp_f.read().strip()
+            observed = obs_f.read().strip()
             assert observed == expected
 
 

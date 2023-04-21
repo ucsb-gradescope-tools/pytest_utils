@@ -2,7 +2,7 @@ import sys
 
 
 def get_number():
-    return input('Number:')
+    return input('Number: ')
 
 
 if __name__ == '__main__':
@@ -10,4 +10,4 @@ if __name__ == '__main__':
     num = get_number()
     print(f'The number is {num}')
     num = get_number()
-    print(f'Another number is 2')
+    print(f'Another number is {num}')

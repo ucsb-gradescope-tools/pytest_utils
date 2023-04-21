@@ -1,4 +1,4 @@
-My args are ['test_script.py', 'woot']
+My args are ['script_for_dialog_passes.py', 'woot', '7']
 Number: <<7>>
 The number is ``7;seven;40``
 Number: <<8>>``

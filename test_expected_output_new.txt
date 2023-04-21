@@ -1,5 +1,0 @@
-My args are ['test_script.py', 'woot']
-Number: <<7>>
-The number is 7
-Number: <<8>>[[
-Another number is 8;90]]
