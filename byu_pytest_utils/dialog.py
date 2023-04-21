@@ -1,4 +1,4 @@
-import math
+import argparse
 import re
 import runpy
 import sys
@@ -7,17 +7,6 @@ from functools import wraps
 from pathlib import Path
 
 from byu_pytest_utils.edit_dist import edit_dist
-
-
-# Dialog
-# - Read the tests (expected output)
-# - Run the script
-# - Capture the output
-# - Compare the output
-
-# - Generate multiple tests asserting pieces of output
-
-# I want to pull out the first steps from the last step
 
 
 def dialog(dialog_file, script, *script_args, output_file=None):
@@ -244,3 +233,39 @@ class DialogChecker:
             group_stats = self._score_output(self.observed_output)
 
         return group_stats
+
+
+def record_script(dialog_file, script_name, *script_args):
+    # Intercept input, print, and sys.argv
+    sys.argv = [script_name, *(str(a) for a in script_args)]
+    with open(dialog_file, 'w') as file:
+        def _input(prompt):
+            file.write(prompt)
+            response = input(prompt)
+            file.write(f'<<{response}>>\n')
+            return response
+
+        def _print(*args, **kwargs):
+            print(*args, **kwargs)
+            print(*args, **kwargs, file=file)
+
+        _globals = {
+            'input': _input,
+            'print': _print,
+            'sys': sys
+        }
+
+        # Run script as __main__
+        result = runpy.run_path(script_name, _globals, '__main__')
+
+    return result
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser()
+    parser.add_argument('dialog_file', help='Dialog file to write')
+    parser.add_argument('python_script', help='Python script to run')
+    parser.add_argument('script_args', nargs='*', help='Arguments to the python script (if any)')
+    args = parser.parse_args()
+
+    record_script(args.dialog_file, args.python_script, *args.script_args)

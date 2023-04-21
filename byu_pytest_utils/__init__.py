@@ -5,9 +5,8 @@ import pytest
 pytest.register_assert_rewrite("byu_pytest_utils.io_checker")
 pytest.register_assert_rewrite("byu_pytest_utils.dialog")
 
-from .test_utils import compare_files, run_python, with_import
+from .utils import run_python_script, with_import, ensure_missing
 from .decorators import max_score, visibility, tags
-from .io_checker import check_io
 from .dialog import dialog
 
 # Type stubs to make these variables discoverable

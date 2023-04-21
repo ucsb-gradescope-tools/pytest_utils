@@ -35,7 +35,7 @@ def test_dialog_expects_more_input_should_fail():
     "dialogs/test_dialog_expects_less_input.txt",
     "script_for_dialog_passes.py", 'woot'
 )
-def test_dialog_expects_less_input():
+def test_dialog_expects_less_input_should_fail():
     """
     seven should pass, but everything-else should fail
     There should be an error: "Input called more times than expected"

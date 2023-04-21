@@ -1,7 +1,6 @@
 import importlib
 import os.path
 import runpy
-import subprocess
 from functools import wraps
 from pathlib import Path
 import inspect
@@ -9,15 +8,6 @@ from typing import Union
 
 import pytest
 import sys
-
-
-# Deprecated - use dialog instead
-def compare_files(expected_file, observed_file):
-    with open(expected_file) as exp_f:
-        with open(observed_file) as obs_f:
-            expected = exp_f.read().strip()
-            observed = obs_f.read().strip()
-            assert observed == expected
 
 
 def run_python_script(script, *args, module='__main__'):
@@ -43,30 +33,6 @@ def run_python_script(script, *args, module='__main__'):
         'input': _input
     }
     return runpy.run_path(script, _globals, module)
-
-
-# Deprecated - use run_python_script instead
-def run_python(*command, stdin=None):
-    for token in command:
-        missing = None
-        if isinstance(token, str) and token.endswith('.py') and not os.path.exists(token):
-            missing = os.path.basename(token)
-        elif isinstance(token, Path) and token.name.endswith('.py') and not token.exists():
-            missing = token.name
-
-        if missing:
-            print(f'Missing: {token}')
-            pytest.fail(f'The file {missing} does not exist. Did you submit it?')
-
-    input_bytes = stdin.encode() if stdin else None
-
-    _command = [sys.executable]
-    _command.extend((str(c) for c in command))
-    proc = subprocess.run(_command, input=input_bytes, capture_output=True)
-    if proc.returncode != 0:
-        pytest.fail(f'The command {" ".join(_command)} failed with exit code {proc.returncode}. '
-                    f'{proc.stderr.decode()}')
-    return proc.stdout.decode().replace('\r', '')
 
 
 def ensure_missing(file: Union[Path, str]):
