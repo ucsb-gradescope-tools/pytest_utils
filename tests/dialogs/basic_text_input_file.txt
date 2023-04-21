@@ -1,0 +1,3 @@
+The apple is red.
+The banana is yellow.
+The pear is green.

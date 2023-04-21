@@ -4,17 +4,37 @@ import runpy
 import sys
 import traceback
 from functools import wraps
+from pathlib import Path
 
 from byu_pytest_utils.edit_dist import edit_dist
 
 
-def dialog(dialog_file, script, *script_args):
-    checker = DialogChecker(dialog_file, echo_output=True)
+# Dialog
+# - Read the tests (expected output)
+# - Run the script
+# - Capture the output
+# - Compare the output
+
+# - Generate multiple tests asserting pieces of output
+
+# I want to pull out the first steps from the last step
+
+
+def dialog(dialog_file, script, *script_args, output_file=None):
     try:
-        group_stats = checker.run_script(script, *script_args)
+        # Ensure the output file isn't leftover from a previous run
+        if output_file is not None:
+            if isinstance(output_file, str):
+                output_file = Path(output_file)
+            output_file.unlink(missing_ok=True)
+
+        # Run the script
+        group_stats = DialogChecker(dialog_file, echo_output=True) \
+            .run_script(script, *script_args, output_file=output_file)
 
     except Exception as ex:
         group_stats = {
+            'load-tests': {
                 'group_name': 'load-tests',
                 'expected': '',
                 'observed': traceback.format_exc(),
@@ -22,10 +42,10 @@ def dialog(dialog_file, script, *script_args):
                 'max_score': 1,
                 'passed': False,
             }
+        }
 
     def decorator(func):
-        # func should have empty (pass) body
-        @wraps(func)
+        # func should have empty (pass) body and no arguments
         def new_func(group_name):
             group_stat = group_stats[group_name]
             if not group_stat['passed']:
@@ -107,9 +127,9 @@ class DialogChecker:
 
         return group_weights, group_names, group_sequence, dialog_contents
 
-    def _score_output(self):
+    def _score_output(self, observed_output):
         _, obs, exp = edit_dist(
-            self.observed_output,
+            observed_output,
             self.expected_output,
             GAP=DialogChecker.GAP
         )
@@ -198,7 +218,7 @@ class DialogChecker:
         res = sep.join(str(t) for t in values) + end
         self._consume_output(res)
 
-    def run_script(self, script_name, *args, module='__main__'):
+    def run_script(self, script_name, *args, output_file=None, module='__main__'):
         # Intercept input, print, and sys.argv
         sys.argv = [script_name, *(str(a) for a in args)]
         _globals = {
@@ -217,6 +237,10 @@ class DialogChecker:
             self._consume_output(traceback.format_exc())
 
         # Final assertion of observed and expected output
-        group_stats = self._score_output()
+        if output_file is not None:
+            with open(output_file) as output:
+                group_stats = self._score_output(output.read())
+        else:
+            group_stats = self._score_output(self.observed_output)
 
         return group_stats

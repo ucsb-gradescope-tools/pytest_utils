@@ -1,0 +1,3 @@
+ThE ``ApplE;apple;30`` Is rEd.
+ThE ``bAnAnA;banana;30`` Is yEllOw.
+ThE ``pEAr;pear;30`` Is grEEn.
