@@ -41,6 +41,7 @@ def dialog(dialog_file, script, *script_args, output_file=None):
                 assert group_stat['observed'] == group_stat['expected']
 
         new_func._group_stats = group_stats
+        new_func.__name__ = func.__name__
         return new_func
 
     return decorator
