@@ -9,13 +9,64 @@ from pathlib import Path
 from byu_pytest_utils.edit_dist import edit_dist
 
 
+def _make_group_stats_decorator(group_stats):
+    def decorator(func):
+        # func should have empty (pass) body and no arguments
+        def new_func(group_name):
+            group_stat = group_stats[group_name]
+            if not group_stat['passed']:
+                assert group_stat['observed'] == group_stat['expected']
+
+        new_func._group_stats = group_stats
+        new_func.__name__ = func.__name__
+        return new_func
+
+    return decorator
+
+
+def _ensure_absent(output_file):
+    if output_file is not None:
+        if isinstance(output_file, str):
+            output_file = Path(output_file)
+        output_file.unlink(missing_ok=True)
+
+
+def dialog_exec(dialog_file, executable, *args, output_file=None):
+    try:
+        # Ensure the output file isn't leftover from a previous run
+        _ensure_absent(output_file)
+
+        if callable(executable):
+            executable = executable()
+
+        args = [arg() if callable(arg) else arg for arg in args]
+
+        # Run the script
+        group_stats = DialogChecker(dialog_file, echo_output=True) \
+            .run(executable, *args, output_file=output_file)
+
+    except Exception as ex:
+        group_stats = {
+            'load-tests': {
+                'group_name': 'load-tests',
+                'expected': '',
+                'observed': traceback.format_exc(),
+                'score': 0,
+                'max_score': 1,
+                'passed': False,
+            }
+        }
+
+    return _make_group_stats_decorator(group_stats)
+
+
 def dialog(dialog_file, script, *script_args, output_file=None):
     try:
         # Ensure the output file isn't leftover from a previous run
-        if output_file is not None:
-            if isinstance(output_file, str):
-                output_file = Path(output_file)
-            output_file.unlink(missing_ok=True)
+        _ensure_absent(output_file)
+        if callable(script):
+            script = script()
+        script_args = [arg() if callable(arg) else arg for arg in script_args]
 
         # Run the script
         group_stats = DialogChecker(dialog_file, echo_output=True) \
@@ -33,18 +84,7 @@ def dialog(dialog_file, script, *script_args, output_file=None):
             }
         }
 
-    def decorator(func):
-        # func should have empty (pass) body and no arguments
-        def new_func(group_name):
-            group_stat = group_stats[group_name]
-            if not group_stat['passed']:
-                assert group_stat['observed'] == group_stat['expected']
-
-        new_func._group_stats = group_stats
-        new_func.__name__ = func.__name__
-        return new_func
-
-    return decorator
+    return _make_group_stats_decorator(group_stats)
 
 
 class DialogChecker:

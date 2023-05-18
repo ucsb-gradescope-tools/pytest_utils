@@ -1,5 +1,6 @@
 /results.json
 /.idea/
 dist/
-byu_pytest_utils/__pycache__/
+__pycache__/
 *.observed.txt
+.DS*
