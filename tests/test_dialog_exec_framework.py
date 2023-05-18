@@ -1,5 +1,4 @@
-from functools import cache
-from byu_pytest_utils import dialog_exec
+from byu_pytest_utils import dialog_exec, cache
 
 # This file demonstrates how we can use
 #  predefined assets (like compiled binaries)
