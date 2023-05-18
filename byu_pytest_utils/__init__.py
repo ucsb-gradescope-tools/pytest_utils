@@ -7,7 +7,7 @@ pytest.register_assert_rewrite("byu_pytest_utils.dialog")
 
 from .utils import run_python_script, with_import, ensure_missing
 from .decorators import max_score, visibility, tags
-from .dialog import dialog
+from .dialog import dialog, dialog_exec
 
 # Type stubs to make these variables discoverable
 # Actual values are supplied by __getattr__
