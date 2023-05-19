@@ -107,8 +107,9 @@ class DialogChecker:
     def _extract_input(dialogue_contents: str):
         # Find all tokens delimited by << and >> and return them
         # as a list along with the original contents with the << and >> removed
-        inputs = re.findall(r'<<(.*?)>>', dialogue_contents)
-        dialogue_contents = re.sub(r'<<(.*?)>>', r'\1', dialogue_contents)
+        inputs = re.findall(r'<<(.*?)>>', dialogue_contents, re.DOTALL)
+        dialogue_contents = re.sub(
+            r'<<(.*?)>>', r'\1', dialogue_contents, flags=re.DOTALL)
         return inputs, dialogue_contents
 
     @staticmethod
