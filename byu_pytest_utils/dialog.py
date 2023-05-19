@@ -117,7 +117,8 @@ class DialogChecker:
         # blah blah [[foo;name;10]] blah blah
 
         group_weights = {DialogChecker.DEFAULT_GROUP: 0}
-        group_names = {DialogChecker.DEFAULT_GROUP: DialogChecker.DEFAULT_GROUP_NAME}
+        group_names = {
+            DialogChecker.DEFAULT_GROUP: DialogChecker.DEFAULT_GROUP_NAME}
 
         group_sequence = ''
 
@@ -137,7 +138,8 @@ class DialogChecker:
             if dialog_contents[i:i + 2] == '``':
                 # Start of a group
                 group_symbol = chr(ord('a') - 1 + len(group_weights))
-                group_match = re.search(r'``(.*?);(.+?);(\d+?)``', dialog_contents[i:], flags=re.DOTALL)
+                group_match = re.search(
+                    r'``(.*?);(.+?);(\d+?)``', dialog_contents[i:], flags=re.DOTALL)
                 group_text = group_match.group(1)
                 group_name = group_match.group(2)
                 group_names[group_symbol] = group_name
@@ -154,7 +156,8 @@ class DialogChecker:
         group_weights[DialogChecker.DEFAULT_GROUP] = 100 - total
 
         # Then remove the groups from the dialog contents
-        dialog_contents = re.sub(r'``(.*?);(.+?);(\d+?)``', r'\1', dialog_contents, flags=re.DOTALL)
+        dialog_contents = re.sub(
+            r'``(.*?);(.+?);(\d+?)``', r'\1', dialog_contents, flags=re.DOTALL)
 
         return group_weights, group_names, group_sequence, dialog_contents
 
@@ -209,8 +212,10 @@ class DialogChecker:
         def pad(text):
             return text + ' ' * (80 - len(text))
 
-        group_obs[DialogChecker.DEFAULT_GROUP] = pad(obs.replace(DialogChecker.GAP, ''))
-        group_exp[DialogChecker.DEFAULT_GROUP] = pad(exp.replace(DialogChecker.GAP, ''))
+        group_obs[DialogChecker.DEFAULT_GROUP] = pad(
+            obs.replace(DialogChecker.GAP, ''))
+        group_exp[DialogChecker.DEFAULT_GROUP] = pad(
+            exp.replace(DialogChecker.GAP, ''))
 
         group_stats = {}
         for group_id, group_name in self.group_names.items():
@@ -307,7 +312,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('dialog_file', help='Dialog file to write')
     parser.add_argument('python_script', help='Python script to run')
-    parser.add_argument('script_args', nargs='*', help='Arguments to the python script (if any)')
+    parser.add_argument('script_args', nargs='*',
+                        help='Arguments to the python script (if any)')
     args = parser.parse_args()
 
     record_script(args.dialog_file, args.python_script, *args.script_args)
