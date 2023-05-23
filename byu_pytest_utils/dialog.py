@@ -5,6 +5,7 @@ import runpy
 import subprocess as sp
 import sys
 import threading
+import time
 import traceback
 from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
@@ -14,6 +15,7 @@ from pathlib import Path
 from byu_pytest_utils.edit_dist import edit_dist
 
 _EXEC_DEFAULT_MAX_WAITTIME_BEFORE_INPUTTING = 0.1
+_EXEC_DEFAULT_WARMUP_TIME = 0.5
 _EXEC_DEFAULT_MAX_PROC_EXEC_TIME = 10
 _EXEC_DEFAULT_MAX_OUTPUT_LEN = 2000
 
@@ -43,6 +45,7 @@ def _ensure_absent(output_file):
 def dialog_exec(dialog_file, executable, *args, output_file=None,
                 close_stdin_after_all_inputs_given=False,
                 max_waittime_before_inputting=_EXEC_DEFAULT_MAX_WAITTIME_BEFORE_INPUTTING,
+                warmup_time=_EXEC_DEFAULT_WARMUP_TIME,
                 max_proc_exec_time=_EXEC_DEFAULT_MAX_PROC_EXEC_TIME,
                 max_output_len=_EXEC_DEFAULT_MAX_OUTPUT_LEN, **popen_args):
     try:
@@ -59,6 +62,7 @@ def dialog_exec(dialog_file, executable, *args, output_file=None,
             .run_exec(executable, *args, output_file=output_file,
                       close_stdin_after_all_inputs_given=close_stdin_after_all_inputs_given,
                       max_waittime_before_inputting=max_waittime_before_inputting,
+                      warmup_time=warmup_time,
                       max_proc_exec_time=max_proc_exec_time,
                       max_output_len=max_output_len, **popen_args)
 
@@ -342,6 +346,7 @@ class DialogChecker:
     def run_exec(self, executable, *args, output_file=None,
                  close_stdin_after_all_inputs_given=False,
                  max_waittime_before_inputting=_EXEC_DEFAULT_MAX_WAITTIME_BEFORE_INPUTTING,
+                 warmup_time=_EXEC_DEFAULT_WARMUP_TIME,
                  max_proc_exec_time=_EXEC_DEFAULT_MAX_PROC_EXEC_TIME,
                  max_output_len=_EXEC_DEFAULT_MAX_OUTPUT_LEN, **popen_args):
         args = [executable, *(str(a) for a in args)]
@@ -359,6 +364,7 @@ class DialogChecker:
         # I think this should be fine.
         process = sp.Popen(args, stdin=sp.PIPE, stdout=sp.PIPE,
                            stderr=sp.STDOUT, **popen_args)
+        time.sleep(warmup_time)
         timer = threading.Timer(max_proc_exec_time, process.terminate)
         timer.start()
         already_gave_input = False
