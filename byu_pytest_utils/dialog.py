@@ -1,5 +1,6 @@
 import argparse
 import contextlib
+import os
 import re
 import runpy
 import subprocess as sp
@@ -318,17 +319,19 @@ class DialogChecker:
         try:
             runpy.run_path(script_name, _globals, module)
 
+            if output_file is not None:
+                if os.path.exists(output_file):
+                    with open(output_file) as output:
+                        group_stats = self._score_output(output.read())
+                else:
+                    group_stats = self._score_output(f"File not found: {output_file}. Did you write it?")
+            else:
+                group_stats = self._score_output(self.observed_output)
+
         except Exception as ex:
             # get stack trace as string
-            self._consume_output(f'\nException: {ex}\n')
-            self._consume_output(traceback.format_exc())
-
-        # Final assertion of observed and expected output
-        if output_file is not None:
-            with open(output_file) as output:
-                group_stats = self._score_output(output.read())
-        else:
-            group_stats = self._score_output(self.observed_output)
+            exception = f"Exception: {ex}\n{traceback.format_exc()}"
+            group_stats = self._score_output(exception)
 
         return group_stats
 
@@ -382,8 +385,19 @@ class DialogChecker:
                 already_gave_input = True
                 self._exec_give_input(
                     process.stdin, close_stdin_after_all_inputs_given, max_output_len)
+
+            if output_file is not None:
+                if os.path.exists(output_file):
+                    with open(output_file) as file:
+                        group_stats = self._score_output(file.read())
+                else:
+                    group_stats = self._score_output(f'File not found: {output_file}. Did you write it?')
+            else:
+                group_stats = self._score_output(self.observed_output)
+
         except Exception as ex:
-            self._consume_output(f'An error occurred: {ex}\n')
+            exception = f'Exception: {ex}\n{traceback.format_exc()}'
+            group_stats = self._score_output(exception)
             process.terminate()
 
         # Clean resources up
@@ -391,13 +405,6 @@ class DialogChecker:
         process.stdout.close()
         process.stdin.close()
         process.terminate()
-
-        # Final assertion of observed and expected output
-        if output_file is not None:
-            with open(output_file) as output:
-                group_stats = self._score_output(output.read())
-        else:
-            group_stats = self._score_output(self.observed_output)
 
         return group_stats
 
