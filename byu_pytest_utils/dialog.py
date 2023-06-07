@@ -5,6 +5,7 @@ import sys
 import traceback
 from functools import wraps
 from pathlib import Path
+import os
 
 from byu_pytest_utils.edit_dist import edit_dist
 
