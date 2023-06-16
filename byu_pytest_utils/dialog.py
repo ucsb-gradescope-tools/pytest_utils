@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor
 from functools import wraps
 from queue import Queue, Empty
 from pathlib import Path
+import os
 
 from byu_pytest_utils.edit_dist import edit_dist
 
