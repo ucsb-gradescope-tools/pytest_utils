@@ -1,3 +1,6 @@
+from functools import wraps
+
+
 def max_score(maximum):
     """
     Decorator for setting the max score of a test
@@ -32,3 +35,27 @@ def tags(tag_list):
         f.tags = tag_list
         return f
     return wrapper
+
+
+def cache(func):
+    called = False
+    result = None
+    ex = None
+
+    @wraps(func)
+    def new_func():
+        nonlocal called
+        nonlocal result
+        nonlocal ex
+        if not called:
+            called = True
+            try:
+                result = func()
+            except Exception as e:
+                ex = e
+
+        if ex is not None:
+            raise ex
+
+        return result
+    return new_func

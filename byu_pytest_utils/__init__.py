@@ -5,9 +5,11 @@ import pytest
 pytest.register_assert_rewrite("byu_pytest_utils.io_checker")
 pytest.register_assert_rewrite("byu_pytest_utils.dialog")
 
-from .utils import run_python_script, with_import, ensure_missing
-from .decorators import max_score, visibility, tags
-from .dialog import dialog
+from .utils import run_python_script, with_import, ensure_missing  # nopep8
+from .cpp_utils import compile_cpp  # nopep8
+from .decorators import max_score, visibility, tags, cache  # nopep8
+from .dialog import dialog, dialog_exec  # nopep8
+from functools import cache  # nopep8
 
 # Type stubs to make these variables discoverable
 # Actual values are supplied by __getattr__
