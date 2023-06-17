@@ -32,6 +32,7 @@ def _make_group_stats_decorator(group_stats):
 
         new_func._group_stats = group_stats
         new_func.__name__ = func.__name__
+        new_func.__module__ = func.__module__
         return new_func
 
     return decorator
@@ -325,7 +326,8 @@ class DialogChecker:
                     with open(output_file) as output:
                         group_stats = self._score_output(output.read())
                 else:
-                    group_stats = self._score_output(f"File not found: {output_file}. Did you write it?")
+                    group_stats = self._score_output(
+                        f"File not found: {output_file}. Did you write it?")
             else:
                 group_stats = self._score_output(self.observed_output)
 
@@ -392,7 +394,8 @@ class DialogChecker:
                     with open(output_file) as file:
                         group_stats = self._score_output(file.read())
                 else:
-                    group_stats = self._score_output(f'File not found: {output_file}. Did you write it?')
+                    group_stats = self._score_output(
+                        f'File not found: {output_file}. Did you write it?')
             else:
                 group_stats = self._score_output(self.observed_output)
 

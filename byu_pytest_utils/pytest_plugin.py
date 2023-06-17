@@ -39,7 +39,7 @@ def pytest_generate_tests(metafunc):
         for group_name, stats in group_stats.items():
             stats['max_score'] *= getattr(metafunc.function, 'max_score', 0)
             stats['score'] *= getattr(metafunc.function, 'max_score', 0)
-            test_name = f'{metafunc.function.__name__}[{group_name}]'
+            test_name = f'{metafunc.function.__module__}.py::{metafunc.function.__name__}[{group_name}]'
             test_group_stats[test_name] = stats
 
         metafunc.parametrize('group_name', group_stats.keys())
@@ -55,7 +55,8 @@ def pytest_runtest_makereport(item):
     if item._obj not in metadata:
         metadata[item._obj] = {}
     metadata[item._obj]['max_score'] = getattr(item._obj, 'max_score', 0)
-    metadata[item._obj]['visibility'] = getattr(item._obj, 'visibility', 'visible')
+    metadata[item._obj]['visibility'] = getattr(
+        item._obj, 'visibility', 'visible')
     x._result.metadata_key = item._obj
 
 
@@ -81,7 +82,7 @@ def pytest_terminal_summary(terminalreporter, exitstatus):
 
     for s in all_tests:
         output = s.capstdout + '\n' + s.capstderr
-        group_stats = test_group_stats[s.head_line]
+        group_stats = test_group_stats[s.nodeid]
 
         max_score = group_stats['max_score']
         score = group_stats.get('score', max_score if s.passed else 0)
